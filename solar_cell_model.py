@@ -1,238 +1,270 @@
 """
-Solar Cell Placement Effectiveness Model
-CCNY Calculus 1 Final Project - Montefiore Square Redesign
+Solar Panel Tilt Optimization
+CCNY Calculus 1 Final Project - Montefiore Square
 
-This module models the effectiveness of solar panel placement using calculus principles:
-- Solar irradiance as a function of time and angle
-- Optimization of panel placement
-- Energy production estimation
+Simple model using basic Calculus 1 concepts:
+- Continuous functions
+- Derivatives (rate of change)
+- Integrals (area under curve)
+- Optimization (find maximum)
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import minimize
-from scipy.integrate import quad, dblquad
+from scipy.integrate import quad
 
-# Constants
-LATITUDE = 40.8  # NYC latitude in degrees
-SOLAR_CONSTANT = 1361  # W/m^2 (solar constant)
-MONTEFIORE_WIDTH = 100  # meters (estimated)
-MONTEFIORE_LENGTH = 150  # meters (estimated)
+# Simple constants
+PEAK_POWER = 800  # Maximum power at noon (Watts for 1 m² panel)
 
-def solar_declination(day_of_year):
+def solar_power(time, tilt=30):
     """
-    Calculate solar declination angle (in radians)
-    Derived from Earth's axial tilt using Fourier approximation
+    Simplified model of solar power output vs time of day.
+    
+    Assumes a bell curve: power is 0 at sunrise/sunset,
+    peaks at noon, affected by how well panel faces the sun.
+    
+    Power = (peak power) × sin(hour angle) × cos(angle difference)
     
     Args:
-        day_of_year: Day number (1-365)
+        time: Hour of day (0-24)
+        tilt: Panel tilt angle in degrees (0 = flat, 90 = vertical)
     
     Returns:
-        Declination angle in radians
+        Power in Watts
     """
-    # Fourier approximation of declination
-    declination_rad = 0.40910518 - 22.95 * np.cos((day_of_year + 10.9) * np.pi / 173)
-    return np.radians(declination_rad)
+    # No sun before 6 AM or after 6 PM
+    if time < 6 or time > 18:
+        return 0
+    
+    # How high is the sun? (simplified: peaks at noon)
+    # Height increases then decreases throughout the day
+    hour_from_noon = time - 12
+    sun_height = 70 - (hour_from_noon ** 2) / 2  # Parabola
+    
+    if sun_height <= 0:
+        return 0
+    
+    # Convert to radians
+    sun_height_rad = np.radians(sun_height)
+    tilt_rad = np.radians(tilt)
+    
+    # Panel receives more power when it faces the sun directly
+    # Angle between panel and sun
+    angle_diff = abs(sun_height - tilt)
+    angle_factor = max(0, np.cos(np.radians(angle_diff)))
+    
+    # Calculate power
+    power = PEAK_POWER * np.sin(sun_height_rad) * angle_factor
+    return max(0, power)
 
 
-def hour_angle(time_hours, solar_noon=12):
+def total_daily_energy(tilt):
     """
-    Calculate hour angle of sun (in radians)
-    15 degrees per hour rotation
+    Calculate total energy produced in one day using INTEGRATION.
+    
+    Energy = ∫(6 to 18) Power(t, tilt) dt
+    
+    This integral represents the AREA under the power curve.
+    More area = more energy.
     
     Args:
-        time_hours: Time of day (0-24, float)
-        solar_noon: Time of solar noon (typically ~12)
+        tilt: Panel tilt angle in degrees
     
     Returns:
-        Hour angle in radians
+        Total energy in Watt-hours (Wh)
     """
-    return np.radians(15 * (time_hours - solar_noon))
+    result, _ = quad(lambda t: solar_power(t, tilt), 6, 18)
+    return result
 
 
-def solar_elevation_angle(latitude, declination, hour_angle_rad):
+def power_derivative(time, tilt, delta=0.01):
     """
-    Calculate sun elevation angle above horizon (in radians)
-    Using spherical trigonometry formula
+    Calculate dP/dt using the definition of derivative:
+    dP/dt = [P(t + delta) - P(t - delta)] / (2 * delta)
+    
+    This shows how fast power is changing.
     
     Args:
-        latitude: Observer latitude in radians
-        declination: Solar declination in radians
-        hour_angle_rad: Hour angle in radians
+        time: Time of day
+        tilt: Panel tilt angle
+        delta: Small step for calculation
     
     Returns:
-        Elevation angle in radians
+        dP/dt in W/hour
     """
-    sin_elevation = (np.sin(latitude) * np.sin(declination) + 
-                     np.cos(latitude) * np.cos(declination) * np.cos(hour_angle_rad))
-    elevation = np.arcsin(np.clip(sin_elevation, -1, 1))
-    return elevation
+    p_after = solar_power(time + delta, tilt)
+    p_before = solar_power(time - delta, tilt)
+    return (p_after - p_before) / (2 * delta)
 
 
-def solar_azimuth_angle(latitude, declination, hour_angle_rad, elevation):
+def energy_derivative(tilt, delta=0.5):
     """
-    Calculate solar azimuth angle (0° = North, 90° = East, 180° = South)
+    Calculate dE/dθ (how energy changes with tilt angle):
+    dE/dθ = [E(θ + delta) - E(θ - delta)] / (2 * delta)
     
     Args:
-        latitude: Observer latitude in radians
-        declination: Solar declination in radians
-        hour_angle_rad: Hour angle in radians
-        elevation: Solar elevation angle in radians
+        tilt: Panel tilt angle
+        delta: Small step for calculation
     
     Returns:
-        Azimuth angle in radians
+        dE/dθ in Wh per degree
     """
-    numerator = np.sin(hour_angle_rad)
-    denominator = (np.cos(hour_angle_rad) * np.sin(latitude) - 
-                   np.tan(declination) * np.cos(latitude))
-    azimuth = np.arctan2(numerator, denominator)
-    return azimuth
+    e_after = total_daily_energy(tilt + delta)
+    e_before = total_daily_energy(tilt - delta)
+    return (e_after - e_before) / (2 * delta)
 
 
-def incident_angle(panel_tilt, panel_azimuth, solar_elevation, solar_azimuth):
+def find_best_tilt():
     """
-    Calculate angle of incidence on tilted panel surface
-    Using vector dot product of surface normal and solar direction
+    Find the OPTIMAL TILT ANGLE where dE/dθ = 0
     
-    Args:
-        panel_tilt: Panel tilt angle from horizontal (radians)
-        panel_azimuth: Panel azimuth direction (radians)
-        solar_elevation: Sun elevation angle (radians)
-        solar_azimuth: Sun azimuth angle (radians)
+    This uses the idea that at a maximum, the derivative = 0.
+    By testing different tilt angles and finding where 
+    the derivative changes from positive to negative,
+    we find the optimal angle.
     
     Returns:
-        Angle of incidence in radians (0 = perpendicular, π/2 = grazing)
+        Best tilt angle (degrees) and corresponding energy (Wh)
     """
-    # Surface normal vector (pointing toward sun)
-    normal_z = np.cos(panel_tilt)
-    normal_xy = np.sin(panel_tilt)
-    normal_x = normal_xy * np.cos(panel_azimuth)
-    normal_y = normal_xy * np.sin(panel_azimuth)
+    best_tilt = 0
+    best_energy = 0
     
-    # Solar direction vector
-    solar_z = np.sin(solar_elevation)
-    solar_xy = np.cos(solar_elevation)
-    solar_x = solar_xy * np.cos(solar_azimuth)
-    solar_y = solar_xy * np.sin(solar_azimuth)
+    # Test tilt angles from 0° to 80°
+    for tilt in np.arange(0, 81, 1):
+        energy = total_daily_energy(tilt)
+        if energy > best_energy:
+            best_energy = energy
+            best_tilt = tilt
     
-    # Dot product (cosine of incidence angle)
-    cos_incident = (normal_x * solar_x + normal_y * solar_y + normal_z * solar_z)
-    cos_incident = np.clip(cos_incident, 0, 1)  # Only receive light from front
-    
-    incident = np.arccos(cos_incident)
-    return incident
+    return best_tilt, best_energy
 
 
-def panel_efficiency(incident_angle_rad, temp_c=25):
-    """
-    Calculate panel efficiency factor based on incidence angle and temperature
+# ============================================================================
+# PLOTTING / VISUALIZATION
+# ============================================================================
+
+def plot_power_throughout_day():
+    """Plot power output throughout one day at different tilt angles"""
+    times = np.linspace(6, 18, 100)
     
-    Args:
-        incident_angle_rad: Angle of incidence in radians
-        temp_c: Panel temperature in Celsius
+    plt.figure(figsize=(10, 6))
     
-    Returns:
-        Efficiency factor (0-1)
-    """
-    # Cosine loss (angle of incidence loss)
-    cos_loss = np.cos(incident_angle_rad)
+    # Plot for three different tilt angles
+    for tilt in [0, 30, 60]:
+        powers = [solar_power(t, tilt) for t in times]
+        plt.plot(times, powers, linewidth=2, label=f'Tilt = {tilt}°')
     
-    # Temperature coefficient (efficiency decreases with temperature)
-    # Typical silicon panels: -0.4% efficiency per degree C above 25°C
-    temp_coeff = 1 - 0.004 * (temp_c - 25)
-    
-    # Combined efficiency
-    efficiency = cos_loss * temp_coeff
-    return np.clip(efficiency, 0, 1)
+    plt.xlabel('Time of Day (hours)')
+    plt.ylabel('Power (Watts)')
+    plt.title('Solar Power Output Throughout the Day')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('power_vs_time.png', dpi=100)
+    print("✓ Saved power_vs_time.png")
+    plt.close()
 
 
-def daily_energy_production(day_of_year, panel_tilt, panel_azimuth, panel_area=1.0):
-    """
-    Calculate total daily energy production using integration
+def plot_energy_vs_tilt():
+    """Plot total daily energy vs panel tilt angle"""
+    tilts = np.linspace(0, 80, 40)
+    energies = [total_daily_energy(t) for t in tilts]
     
-    Args:
-        day_of_year: Day number (1-365)
-        panel_tilt: Panel tilt angle (radians)
-        panel_azimuth: Panel azimuth (radians)
-        panel_area: Panel area in m^2
+    best_tilt, best_energy = find_best_tilt()
     
-    Returns:
-        Daily energy in kWh
-    """
-    latitude_rad = np.radians(LATITUDE)
-    declination = solar_declination(day_of_year)
+    plt.figure(figsize=(10, 6))
+    plt.plot(tilts, energies, 'b-', linewidth=2, label='Daily Energy')
+    plt.plot(best_tilt, best_energy, 'r*', markersize=20, 
+             label=f'Optimal: {best_tilt}° ({best_energy:.0f} Wh)')
     
-    def irradiance_at_time(time_hours):
-        """Irradiance integrated over panel area at given time"""
-        h_angle = hour_angle(time_hours)
-        elevation = solar_elevation_angle(latitude_rad, declination, h_angle)
-        
-        # No sun below horizon
-        if elevation < 0:
-            return 0
-        
-        azimuth = solar_azimuth_angle(latitude_rad, declination, h_angle, elevation)
-        inc_angle = incident_angle(panel_tilt, panel_azimuth, elevation, azimuth)
-        efficiency = panel_efficiency(inc_angle)
-        
-        # Direct normal irradiance (approximate, clear sky)
-        air_mass = 1 / np.cos(np.pi/2 - elevation)
-        air_mass = np.clip(air_mass, 1, 10)  # Limit to valid range
-        dni = SOLAR_CONSTANT * np.exp(-0.7 * air_mass ** 0.678)
-        
-        # Horizontal component
-        irradiance = dni * np.cos(inc_angle) * efficiency
-        return irradiance * panel_area
-    
-    # Integrate over daylight hours (6 AM to 6 PM)
-    energy_wh, _ = quad(irradiance_at_time, 6, 18)
-    energy_kwh = energy_wh / 1000  # Convert Wh to kWh
-    
-    return energy_kwh
+    plt.xlabel('Panel Tilt Angle (degrees)')
+    plt.ylabel('Daily Energy (Wh)')
+    plt.title('Total Energy vs Panel Tilt - FIND THE MAXIMUM')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('energy_vs_tilt.png', dpi=100)
+    print("✓ Saved energy_vs_tilt.png")
+    plt.close()
 
 
-def optimize_panel_placement(panel_area=1.0, day_of_year=172):
-    """
-    Optimize panel tilt and azimuth for maximum annual energy production
-    Uses scipy optimization
+def plot_derivative_of_energy():
+    """Show dE/dθ (derivative of energy vs tilt)"""
+    tilts = np.linspace(0, 80, 30)
+    derivatives = [energy_derivative(t) for t in tilts]
     
-    Args:
-        panel_area: Panel area in m^2
-        day_of_year: Reference day for optimization (default: June 21 - summer solstice)
+    best_tilt, _ = find_best_tilt()
     
-    Returns:
-        Optimal tilt angle (degrees), optimal azimuth (degrees), max energy (kWh)
-    """
-    def negative_energy(params):
-        tilt_rad = np.radians(params[0])
-        azimuth_rad = np.radians(params[1])
-        energy = daily_energy_production(day_of_year, tilt_rad, azimuth_rad, panel_area)
-        return -energy  # Negative because we're minimizing
+    plt.figure(figsize=(10, 6))
+    plt.plot(tilts, derivatives, 'g-', linewidth=2, label='dE/dθ')
+    plt.axhline(y=0, color='k', linestyle='-', linewidth=1)
+    plt.plot(best_tilt, 0, 'r*', markersize=20, 
+             label=f'Zero at {best_tilt}° (optimal)')
     
-    # Initial guess: 35° tilt, 180° azimuth (facing south)
-    initial_guess = [35, 180]
-    
-    # Constraints: tilt 0-90°, azimuth 0-360°
-    bounds = [(0, 90), (0, 360)]
-    
-    result = minimize(negative_energy, initial_guess, bounds=bounds, method='L-BFGS-B')
-    
-    optimal_tilt = result.x[0]
-    optimal_azimuth = result.x[1]
-    max_energy = -result.fun
-    
-    return optimal_tilt, optimal_azimuth, max_energy
+    plt.xlabel('Panel Tilt Angle (degrees)')
+    plt.ylabel('dE/dθ (Wh per degree)')
+    plt.title('Derivative of Energy - Shows Where Maximum Is')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('derivative_vs_tilt.png', dpi=100)
+    print("✓ Saved derivative_vs_tilt.png")
+    plt.close()
 
+
+# ============================================================================
+# MAIN
+# ============================================================================
 
 if __name__ == "__main__":
-    print("Solar Cell Placement Effectiveness Model")
-    print("=" * 50)
+    print("\n" + "="*60)
+    print("SOLAR PANEL OPTIMIZATION - Calculus 1")
+    print("="*60)
     
-    # Test: Find optimal placement for summer solstice
-    print("\nOptimizing for June 21 (Summer Solstice)...")
-    tilt, azimuth, energy = optimize_panel_placement()
-    print(f"Optimal Tilt: {tilt:.2f}°")
-    print(f"Optimal Azimuth: {azimuth:.2f}° (0°=North, 180°=South)")
-    print(f"Expected Daily Energy: {energy:.4f} kWh")
+    # EXAMPLE 1: Power at different times
+    print("\n1. POWER OUTPUT AT DIFFERENT TIMES (30° tilt)")
+    print("-"*60)
+    for hour in [8, 10, 12, 14, 16]:
+        p = solar_power(hour, tilt=30)
+        print(f"   {hour}:00 → Power = {p:.1f} W")
     
-    print("\nModel setup complete!")
+    # EXAMPLE 2: Energy for different tilts
+    print("\n2. TOTAL DAILY ENERGY (using INTEGRATION)")
+    print("-"*60)
+    for tilt in [0, 15, 30, 45, 60, 75]:
+        energy = total_daily_energy(tilt)
+        print(f"   {tilt}° tilt → {energy:.0f} Wh")
+    
+    # EXAMPLE 3: Finding the best angle
+    print("\n3. OPTIMIZATION - FINDING BEST TILT")
+    print("-"*60)
+    best_tilt, best_energy = find_best_tilt()
+    print(f"\n   BEST TILT ANGLE: {best_tilt}°")
+    print(f"   MAXIMUM ENERGY: {best_energy:.0f} Wh")
+    print(f"\n   At the optimal angle, the derivative dE/dθ = 0")
+    print(f"   This is where energy stops increasing!")
+    
+    # EXAMPLE 4: Show how derivative changes
+    print("\n4. DERIVATIVE ANALYSIS")
+    print("-"*60)
+    print("   dE/dθ (Wh per degree) at different angles:")
+    for tilt in [10, 20, 30, 40, 50]:
+        deriv = energy_derivative(tilt)
+        status = "still going up" if deriv > 1 else "coming down" if deriv < -1 else "MAXIMUM"
+        print(f"   {tilt}° → dE/dθ = {deriv:7.2f}  ({status})")
+    
+    # Generate plots
+    print("\n" + "="*60)
+    print("Generating graphs...")
+    print("="*60)
+    
+    plot_power_throughout_day()
+    plot_energy_vs_tilt()
+    plot_derivative_of_energy()
+    
+    print("\n✓ All done!")
+    print("\nFiles created:")
+    print("  • power_vs_time.png")
+    print("  • energy_vs_tilt.png")
+    print("  • derivative_vs_tilt.png")
+    print()
