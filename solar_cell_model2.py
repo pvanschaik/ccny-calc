@@ -179,7 +179,7 @@ def plot_energy_vs_tilt():
     
     plt.xlabel('Panel Tilt Angle (degrees)')
     plt.ylabel('Daily Energy (Wh)')
-    plt.title('Total Energy vs Panel Tilt - FIND THE MAXIMUM')
+    plt.title('Total Energy vs Panel Tilt')
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -203,7 +203,7 @@ def plot_derivative_of_energy():
     
     plt.xlabel('Panel Tilt Angle (degrees)')
     plt.ylabel('dE/dθ (Wh per degree)')
-    plt.title('Derivative of Energy - Shows Where Maximum Is')
+    plt.title('Derivative of Energy')
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -218,7 +218,7 @@ def plot_derivative_of_energy():
 
 if __name__ == "__main__":
     print("\n" + "="*60)
-    print("SOLAR PANEL OPTIMIZATION - Calculus 1")
+    print("Calculus 1")
     print("="*60)
     
     # EXAMPLE 1: Power at different times
