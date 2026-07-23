@@ -152,7 +152,7 @@ def plot_power_throughout_day():
     # Plot for three different tilt angles
     for tilt in [0, 30, 60]:
         powers = [solar_power(t, tilt) for t in times]
-        plt.plot(times, powers, linewidth=2, label=f'Tilt = {tilt}°')
+        plt.plot(times, powers, linewidth=2, label=u'Tilt = {}°'.format(tilt))
     
     plt.xlabel('Time of Day (hours)')
     plt.ylabel('Power (Watts)')
@@ -175,7 +175,7 @@ def plot_energy_vs_tilt():
     plt.figure(figsize=(10, 6))
     plt.plot(tilts, energies, 'b-', linewidth=2, label='Daily Energy')
     plt.plot(best_tilt, best_energy, 'r*', markersize=20, 
-             label=f'Optimal: {best_tilt}° ({best_energy:.0f} Wh)')
+             label=u'Optimal: {}° ({:.0f} Wh)'.format(best_tilt, best_energy))
     
     plt.xlabel('Panel Tilt Angle (degrees)')
     plt.ylabel('Daily Energy (Wh)')
@@ -199,7 +199,7 @@ def plot_derivative_of_energy():
     plt.plot(tilts, derivatives, 'g-', linewidth=2, label='dE/dθ')
     plt.axhline(y=0, color='k', linestyle='-', linewidth=1)
     plt.plot(best_tilt, 0, 'r*', markersize=20, 
-             label=f'Zero at {best_tilt}° (optimal)')
+             label=u'Zero at {}° (optimal)'.format(best_tilt))
     
     plt.xlabel('Panel Tilt Angle (degrees)')
     plt.ylabel('dE/dθ (Wh per degree)')
@@ -210,4 +210,3 @@ def plot_derivative_of_energy():
     plt.savefig('derivative_vs_tilt.png', dpi=100)
     print("✓ Saved derivative_vs_tilt.png")
     plt.close()
-
